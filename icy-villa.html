@@ -463,10 +463,14 @@
       renderer.setSize(window.innerWidth, window.innerHeight);
     });
 
-    initArtworks().catch(err => {
-      console.error(err);
-      loading.textContent = '畫作載入失敗，請確認圖片路徑';
-    });
+    initArtworks()
+      .then(() => {
+        startTour();
+      })
+      .catch(err => {
+        console.error(err);
+        loading.textContent = '畫作載入失敗，請確認圖片路徑';
+      });
 
     animate(performance.now());
   </script>
