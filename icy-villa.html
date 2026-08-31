@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ICY Villa · 藝術家別墅</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      width: 100%; height: 100%;
+      overflow: hidden;
+      background: #0d0d0d;
+      font-family: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
+      color: #f2f2f2;
+    }
+    #canvas { display: block; width: 100%; height: 100%; }
+    #ui {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      pointer-events: none;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 28px 34px;
+    }
+    #ui h1 {
+      font-size: clamp(2rem, 5vw, 4rem);
+      font-weight: 200;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      text-shadow: 0 4px 30px rgba(0,0,0,0.6);
+    }
+    #ui h1 span {
+      display: block;
+      font-size: 0.32em;
+      letter-spacing: 0.42em;
+      color: #aaa;
+      margin-top: 0.6em;
+    }
+    #ui .meta {
+      font-size: 0.85rem;
+      color: #999;
+      letter-spacing: 0.08em;
+      display: flex;
+      gap: 28px;
+      align-items: flex-end;
+    }
+    #ui .meta strong { color: #fff; font-weight: 400; }
+    #loading {
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 0.9rem;
+      letter-spacing: 0.2em;
+      color: #888;
+      pointer-events: none;
+      transition: opacity 0.4s ease;
+    }
+  </style>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@200;400;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div id="loading">正在建構 ICY 別墅…</div>
+  <canvas id="canvas"></canvas>
+  <div id="ui">
+    <div>
+      <h1>ICY Villa<span>藝術家的自畫像別墅</span></h1>
+    </div>
+    <div class="meta">
+      <div>作品數量<br><strong id="count">0</strong></div>
+      <div>操作方式<br><strong>拖拽環繞 · 滾輪縮放 · 右鍵平移</strong></div>
+    </div>
+  </div>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { RectAreaLightUniformsLib } from 'three/addons/lights/RectAreaLightUniformsLib.js';
+
+    const canvas = document.getElementById('canvas');
+    const loading = document.getElementById('loading');
+    const countEl = document.getElementById('count');
+
+    // Scene
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x111111);
+    scene.fog = new THREE.FogExp2(0x111111, 0.035);
+
+    const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 100);
+    camera.position.set(0, 1.65, 5.5);
+
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.1;
+
+    RectAreaLightUniformsLib.init();
+
+    const controls = new OrbitControls(camera, canvas);
+    controls.target.set(0, 1.4, 0);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+    controls.maxPolarAngle = Math.PI / 1.85;
+    controls.minDistance = 1.5;
+    controls.maxDistance = 12;
+
+    // Materials
+    const wallMat = new THREE.MeshStandardMaterial({ color: 0xeae5d8, roughness: 0.9, metalness: 0 });
+    const floorMat = new THREE.MeshStandardMaterial({ color: 0x8a7f70, roughness: 0.6, metalness: 0.05 });
+    const concreteMat = new THREE.MeshStandardMaterial({ color: 0x4a4a4a, roughness: 0.95 });
+    const woodMat = new THREE.MeshStandardMaterial({ color: 0x5c4033, roughness: 0.7 });
+    const glassMat = new THREE.MeshPhysicalMaterial({
+      color: 0xffffff, metalness: 0, roughness: 0.05, transmission: 0.92, thickness: 0.1, transparent: true
+    });
+    const frameMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.4 });
+
+    // Floor
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(16, 16), floorMat);
+    floor.rotation.x = -Math.PI / 2;
+    floor.receiveShadow = true;
+    scene.add(floor);
+
+    // Ceiling
+    const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(16, 16), wallMat);
+    ceiling.rotation.x = Math.PI / 2;
+    ceiling.position.y = 3.6;
+    scene.add(ceiling);
+
+    // Helper: wall builder
+    function makeWall(w, h, x, y, z, ry = 0) {
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.25), wallMat);
+      mesh.position.set(x, y, z);
+      mesh.rotation.y = ry;
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      scene.add(mesh);
+      return mesh;
+    }
+
+    // Room shell
+    makeWall(16, 3.6, 0, 1.8, -8);          // back
+    makeWall(16, 3.6, 0, 1.8, 8);           // front (will have opening)
+    makeWall(16, 3.6, -8, 1.8, 0, Math.PI/2); // left
+    makeWall(16, 3.6, 8, 1.8, 0, Math.PI/2);  // right
+
+    // Front wall segments (create central opening)
+    makeWall(5, 3.6, -5.5, 1.8, 8);
+    makeWall(5, 3.6, 5.5, 1.8, 8);
+    makeWall(6, 1.2, 0, 3, 8);
+
+    // Glass wall in opening
+    const glass = new THREE.Mesh(new THREE.PlaneGeometry(6, 2.4), glassMat);
+    glass.position.set(0, 1.2, 8);
+    scene.add(glass);
+
+    // Concrete base / plinth
+    const base = new THREE.Mesh(new THREE.BoxGeometry(16.4, 0.4, 16.4), concreteMat);
+    base.position.y = 0.2;
+    base.receiveShadow = true;
+    scene.add(base);
+
+    // Central wooden beam
+    const beam = new THREE.Mesh(new THREE.BoxGeometry(0.3, 3.6, 0.3), woodMat);
+    beam.position.set(0, 1.8, 0);
+    beam.castShadow = true;
+    scene.add(beam);
+
+    // Procedural self-portrait generator
+    function createPortrait(index) {
+      const size = 512;
+      const cvs = document.createElement('canvas');
+      cvs.width = size; cvs.height = size;
+      const ctx = cvs.getContext('2d');
+
+      // Background wash
+      const hue = (index * 47) % 360;
+      const grad = ctx.createLinearGradient(0, 0, size, size);
+      grad.addColorStop(0, `hsl(${hue}, 45%, 22%)`);
+      grad.addColorStop(1, `hsl(${(hue + 40) % 360}, 35%, 12%)`);
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, size, size);
+
+      // Brush strokes
+      for (let i = 0; i < 90; i++) {
+        ctx.beginPath();
+        ctx.strokeStyle = `hsla(${hue + (Math.random() * 80 - 40)}, ${50 + Math.random() * 40}%, ${30 + Math.random() * 50}%, ${0.2 + Math.random() * 0.5})`;
+        ctx.lineWidth = 2 + Math.random() * 10;
+        const x = Math.random() * size;
+        const y = Math.random() * size;
+        ctx.moveTo(x, y);
+        ctx.quadraticCurveTo(x + Math.random() * 200 - 100, y + Math.random() * 200 - 100, x + Math.random() * 200 - 100, y + Math.random() * 200 - 100);
+        ctx.stroke();
+      }
+
+      // Abstract face shape
+      ctx.save();
+      ctx.translate(size / 2, size / 2);
+      ctx.scale(1, 1.25);
+      ctx.beginPath();
+      ctx.fillStyle = `hsla(${hue}, 25%, 70%, 0.25)`;
+      ctx.arc(0, 0, 130, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+
+      // Eyes
+      ctx.fillStyle = `hsla(${hue}, 80%, 85%, 0.7)`;
+      ctx.beginPath(); ctx.ellipse(size/2 - 55, size/2 - 20, 22, 12, 0, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(size/2 + 55, size/2 - 20, 22, 12, 0, 0, Math.PI*2); ctx.fill();
+
+      // Signature ICY
+      ctx.save();
+      ctx.translate(size - 70, size - 40);
+      ctx.rotate(-0.15);
+      ctx.font = 'italic 700 32px "Noto Sans TC", sans-serif';
+      ctx.fillStyle = 'rgba(255,255,255,0.85)';
+      ctx.fillText('ICY', 0, 0);
+      ctx.restore();
+
+      const tex = new THREE.CanvasTexture(cvs);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      return tex;
+    }
+
+    // Place framed portraits
+    const portraitPositions = [
+      { x: -7.8, y: 1.9, z: -3, ry: Math.PI / 2 },
+      { x: -7.8, y: 1.9, z: 3, ry: Math.PI / 2 },
+      { x: 7.8, y: 1.9, z: -3, ry: -Math.PI / 2 },
+      { x: 7.8, y: 1.9, z: 3, ry: -Math.PI / 2 },
+      { x: -3, y: 1.9, z: -7.8, ry: 0 },
+      { x: 3, y: 1.9, z: -7.8, ry: 0 },
+      { x: -5.5, y: 1.9, z: 7.8, ry: Math.PI },
+      { x: 5.5, y: 1.9, z: 7.8, ry: Math.PI },
+      { x: 0, y: 1.9, z: -7.8, ry: 0 },
+    ];
+
+    portraitPositions.forEach((pos, i) => {
+      const w = 1.3, h = 1.7;
+      const group = new THREE.Group();
+      group.position.set(pos.x, pos.y, pos.z);
+      group.rotation.y = pos.ry;
+
+      // Frame
+      const frame = new THREE.Mesh(new THREE.BoxGeometry(w + 0.12, h + 0.12, 0.06), frameMat);
+      frame.castShadow = true;
+      group.add(frame);
+
+      // Canvas
+      const tex = createPortrait(i);
+      const art = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.6 }));
+      art.position.z = 0.031;
+      group.add(art);
+
+      // Spotlight for each portrait
+      const spot = new THREE.SpotLight(0xfff5e6, 25, 6, Math.PI / 5, 0.4, 1);
+      spot.position.set(0, 1.2, 1.4);
+      spot.target = art;
+      spot.castShadow = true;
+      group.add(spot);
+      group.add(spot.target);
+
+      scene.add(group);
+    });
+
+    countEl.textContent = portraitPositions.length;
+
+    // Ambient lighting
+    const ambient = new THREE.AmbientLight(0xffffff, 0.35);
+    scene.add(ambient);
+
+    // Directional sun
+    const sun = new THREE.DirectionalLight(0xfff0dd, 1.2);
+    sun.position.set(6, 8, 8);
+    sun.castShadow = true;
+    sun.shadow.mapSize.set(2048, 2048);
+    sun.shadow.camera.near = 0.5;
+    sun.shadow.camera.far = 25;
+    sun.shadow.camera.left = -10; sun.shadow.camera.right = 10;
+    sun.shadow.camera.top = 10; sun.shadow.camera.bottom = -10;
+    scene.add(sun);
+
+    // Warm ceiling wash
+    const rectLight = new THREE.RectAreaLight(0xffecd2, 2, 12, 12);
+    rectLight.position.set(0, 3.5, 0);
+    rectLight.rotation.x = -Math.PI / 2;
+    scene.add(rectLight);
+
+    // Animation loop
+    function animate() {
+      requestAnimationFrame(animate);
+      controls.update();
+      renderer.render(scene, camera);
+    }
+
+    // Resize
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    loading.style.opacity = '0';
+    setTimeout(() => loading.remove(), 500);
+    animate();
+  </script>
+</body>
+</html>
