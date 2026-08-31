@@ -268,7 +268,7 @@
     // Tour state
     let tourActive = false;
     let tourIndex = 0;
-    let tourProgress = 0;
+    let tourPhase = 'dwell'; // 'dwell' at current art, then 'travel' to next
     let lastTourTime = 0;
     const dwellTime = 3500; // ms per artwork
     const travelTime = 2000; // ms between artworks
@@ -294,7 +294,7 @@
       tourToggle.textContent = '⏸ 暫停導覽';
       currentCam.copy(camera.position);
       currentTarget.copy(controls.target);
-      tourProgress = 0;
+      tourPhase = 'dwell';
       lastTourTime = performance.now();
       updateTourInfo();
     }
@@ -311,7 +311,7 @@
         currentCam.copy(camera.position);
         currentTarget.copy(controls.target);
       }
-      tourProgress = 0;
+      tourPhase = 'dwell';
       lastTourTime = performance.now();
       updateTourInfo();
     }
@@ -418,23 +418,37 @@
 
       if (tourActive) {
         const elapsed = time - lastTourTime;
-        const totalSegment = travelTime + dwellTime;
-        const rawT = Math.min(elapsed / totalSegment, 1);
-        const t = easeInOutCubic(rawT);
 
-        const from = getViewForArt(artworks[tourIndex]);
-        const toIndex = (tourIndex + 1) % artworks.length;
-        const to = getViewForArt(artworks[toIndex]);
+        if (tourPhase === 'dwell') {
+          // Stay focused on current artwork
+          const view = getViewForArt(artworks[tourIndex]);
+          camera.position.copy(view.eye);
+          controls.target.copy(view.target);
 
-        if (rawT < 1) {
-          tourCam.lerpVectors(from.eye, to.eye, t);
-          tourTarget.lerpVectors(from.target, to.target, t);
+          if (elapsed >= dwellTime) {
+            tourPhase = 'travel';
+            lastTourTime = time;
+            currentCam.copy(camera.position);
+            currentTarget.copy(controls.target);
+          }
+        } else {
+          // Travel to next artwork
+          const rawT = Math.min(elapsed / travelTime, 1);
+          const t = easeInOutCubic(rawT);
+          const toIndex = (tourIndex + 1) % artworks.length;
+          const to = getViewForArt(artworks[toIndex]);
+
+          tourCam.lerpVectors(currentCam, to.eye, t);
+          tourTarget.lerpVectors(currentTarget, to.target, t);
           camera.position.copy(tourCam);
           controls.target.copy(tourTarget);
-        } else {
-          tourIndex = toIndex;
-          lastTourTime = time;
-          updateTourInfo();
+
+          if (rawT >= 1) {
+            tourIndex = toIndex;
+            tourPhase = 'dwell';
+            lastTourTime = time;
+            updateTourInfo();
+          }
         }
       }
 
