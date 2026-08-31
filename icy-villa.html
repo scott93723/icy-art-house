@@ -61,7 +61,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@200;400;700&display=swap" rel="stylesheet">
 </head>
 <body>
-  <div id="loading">正在建構 ICY 別墅…</div>
+  <div id="loading">正在載入 ICY 畫作…</div>
   <canvas id="canvas"></canvas>
   <div id="ui">
     <div>
@@ -126,6 +126,7 @@
       color: 0xffffff, metalness: 0, roughness: 0.05, transmission: 0.92, thickness: 0.1, transparent: true
     });
     const frameMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.4 });
+    const plaqueMat = new THREE.MeshStandardMaterial({ color: 0xf5f0e8, roughness: 0.8 });
 
     // Floor
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(16, 16), floorMat);
@@ -139,7 +140,6 @@
     ceiling.position.y = 3.6;
     scene.add(ceiling);
 
-    // Helper: wall builder
     function makeWall(w, h, x, y, z, ry = 0) {
       const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.25), wallMat);
       mesh.position.set(x, y, z);
@@ -151,22 +151,22 @@
     }
 
     // Room shell
-    makeWall(16, 3.6, 0, 1.8, -8);          // back
-    makeWall(16, 3.6, 0, 1.8, 8);           // front (will have opening)
-    makeWall(16, 3.6, -8, 1.8, 0, Math.PI/2); // left
-    makeWall(16, 3.6, 8, 1.8, 0, Math.PI/2);  // right
+    makeWall(16, 3.6, 0, 1.8, -8);
+    makeWall(16, 3.6, 0, 1.8, 8);
+    makeWall(16, 3.6, -8, 1.8, 0, Math.PI/2);
+    makeWall(16, 3.6, 8, 1.8, 0, Math.PI/2);
 
-    // Front wall segments (create central opening)
+    // Front wall segments with opening
     makeWall(5, 3.6, -5.5, 1.8, 8);
     makeWall(5, 3.6, 5.5, 1.8, 8);
     makeWall(6, 1.2, 0, 3, 8);
 
-    // Glass wall in opening
+    // Glass wall
     const glass = new THREE.Mesh(new THREE.PlaneGeometry(6, 2.4), glassMat);
     glass.position.set(0, 1.2, 8);
     scene.add(glass);
 
-    // Concrete base / plinth
+    // Concrete base
     const base = new THREE.Mesh(new THREE.BoxGeometry(16.4, 0.4, 16.4), concreteMat);
     base.position.y = 0.2;
     base.receiveShadow = true;
@@ -178,104 +178,103 @@
     beam.castShadow = true;
     scene.add(beam);
 
-    // Procedural self-portrait generator
-    function createPortrait(index) {
-      const size = 512;
+    // Artworks configuration
+    const artworks = [
+      { file: 'robot-cat-pink.jpg', title: '機器貓日常', year: '2014', x: -3, z: -7.8, ry: 0, baseW: 1.3 },
+      { file: 'robot-cat-yellow.jpg', title: '機器貓日常', year: '2014', x: 0, z: -7.8, ry: 0, baseW: 1.3 },
+      { file: 'robot-cat-gray.jpg', title: '機器貓日常', year: '2014', x: 3, z: -7.8, ry: 0, baseW: 1.3 },
+      { file: 'guanyin-w01.jpg', title: '觀音系列 #w01', year: '2020', x: -7.8, z: -3, ry: Math.PI/2, baseW: 1.0 },
+      { file: 'buddha-heart-sutra.jpg', title: '心經觀音', year: '2020', x: -7.8, z: 3, ry: Math.PI/2, baseW: 1.2 },
+      { file: 'robot-cat-blue.jpg', title: '機器貓日常', year: '2014', x: 7.8, z: -3, ry: -Math.PI/2, baseW: 1.3 },
+      { file: 'surreal-flower.jpg', title: '向日葵', year: '2014', x: 7.8, z: 3, ry: -Math.PI/2, baseW: 1.2 },
+      { file: 'icy-portrait.jpg', title: 'ICY', year: 'Portrait', x: -5.5, z: 7.8, ry: Math.PI, baseW: 1.2 },
+      { file: 'icy-studio.jpg', title: 'ICY Studio', year: 'Studio', x: 5.5, z: 7.8, ry: Math.PI, baseW: 1.2 },
+    ];
+
+    countEl.textContent = artworks.length;
+
+    // Texture loader
+    const loader = new THREE.TextureLoader();
+    function loadTexture(url) {
+      return new Promise((resolve, reject) => {
+        loader.load(url, resolve, undefined, reject);
+      });
+    }
+
+    // Caption plaque generator
+    function makePlaque(title, year, width) {
       const cvs = document.createElement('canvas');
-      cvs.width = size; cvs.height = size;
+      const h = 128, w = 512;
+      cvs.width = w; cvs.height = h;
       const ctx = cvs.getContext('2d');
-
-      // Background wash
-      const hue = (index * 47) % 360;
-      const grad = ctx.createLinearGradient(0, 0, size, size);
-      grad.addColorStop(0, `hsl(${hue}, 45%, 22%)`);
-      grad.addColorStop(1, `hsl(${(hue + 40) % 360}, 35%, 12%)`);
-      ctx.fillStyle = grad;
-      ctx.fillRect(0, 0, size, size);
-
-      // Brush strokes
-      for (let i = 0; i < 90; i++) {
-        ctx.beginPath();
-        ctx.strokeStyle = `hsla(${hue + (Math.random() * 80 - 40)}, ${50 + Math.random() * 40}%, ${30 + Math.random() * 50}%, ${0.2 + Math.random() * 0.5})`;
-        ctx.lineWidth = 2 + Math.random() * 10;
-        const x = Math.random() * size;
-        const y = Math.random() * size;
-        ctx.moveTo(x, y);
-        ctx.quadraticCurveTo(x + Math.random() * 200 - 100, y + Math.random() * 200 - 100, x + Math.random() * 200 - 100, y + Math.random() * 200 - 100);
-        ctx.stroke();
-      }
-
-      // Abstract face shape
-      ctx.save();
-      ctx.translate(size / 2, size / 2);
-      ctx.scale(1, 1.25);
-      ctx.beginPath();
-      ctx.fillStyle = `hsla(${hue}, 25%, 70%, 0.25)`;
-      ctx.arc(0, 0, 130, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
-
-      // Eyes
-      ctx.fillStyle = `hsla(${hue}, 80%, 85%, 0.7)`;
-      ctx.beginPath(); ctx.ellipse(size/2 - 55, size/2 - 20, 22, 12, 0, 0, Math.PI*2); ctx.fill();
-      ctx.beginPath(); ctx.ellipse(size/2 + 55, size/2 - 20, 22, 12, 0, 0, Math.PI*2); ctx.fill();
-
-      // Signature ICY
-      ctx.save();
-      ctx.translate(size - 70, size - 40);
-      ctx.rotate(-0.15);
-      ctx.font = 'italic 700 32px "Noto Sans TC", sans-serif';
-      ctx.fillStyle = 'rgba(255,255,255,0.85)';
-      ctx.fillText('ICY', 0, 0);
-      ctx.restore();
-
+      ctx.fillStyle = '#f5f0e8';
+      ctx.fillRect(0, 0, w, h);
+      ctx.fillStyle = '#1a1a1a';
+      ctx.font = '700 34px "Noto Sans TC", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(title, w / 2, 56);
+      ctx.font = '300 28px "Noto Sans TC", sans-serif';
+      ctx.fillStyle = '#666';
+      ctx.fillText(year, w / 2, 96);
       const tex = new THREE.CanvasTexture(cvs);
       tex.colorSpace = THREE.SRGBColorSpace;
       return tex;
     }
 
-    // Place framed portraits
-    const portraitPositions = [
-      { x: -7.8, y: 1.9, z: -3, ry: Math.PI / 2 },
-      { x: -7.8, y: 1.9, z: 3, ry: Math.PI / 2 },
-      { x: 7.8, y: 1.9, z: -3, ry: -Math.PI / 2 },
-      { x: 7.8, y: 1.9, z: 3, ry: -Math.PI / 2 },
-      { x: -3, y: 1.9, z: -7.8, ry: 0 },
-      { x: 3, y: 1.9, z: -7.8, ry: 0 },
-      { x: -5.5, y: 1.9, z: 7.8, ry: Math.PI },
-      { x: 5.5, y: 1.9, z: 7.8, ry: Math.PI },
-      { x: 0, y: 1.9, z: -7.8, ry: 0 },
-    ];
+    // Load and place all artworks
+    async function initArtworks() {
+      for (const art of artworks) {
+        const tex = await loadTexture(`images/${art.file}`);
+        tex.colorSpace = THREE.SRGBColorSpace;
+        const aspect = tex.image.width / tex.image.height;
 
-    portraitPositions.forEach((pos, i) => {
-      const w = 1.3, h = 1.7;
-      const group = new THREE.Group();
-      group.position.set(pos.x, pos.y, pos.z);
-      group.rotation.y = pos.ry;
+        const frameH = 1.7;
+        const frameW = frameH * aspect;
+        const clampedW = Math.min(frameW, art.baseW * 1.5);
+        const clampedH = clampedW / aspect;
 
-      // Frame
-      const frame = new THREE.Mesh(new THREE.BoxGeometry(w + 0.12, h + 0.12, 0.06), frameMat);
-      frame.castShadow = true;
-      group.add(frame);
+        const group = new THREE.Group();
+        group.position.set(art.x, 1.9, art.z);
+        group.rotation.y = art.ry;
 
-      // Canvas
-      const tex = createPortrait(i);
-      const art = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.6 }));
-      art.position.z = 0.031;
-      group.add(art);
+        // Frame
+        const frame = new THREE.Mesh(new THREE.BoxGeometry(clampedW + 0.12, clampedH + 0.12, 0.06), frameMat);
+        frame.castShadow = true;
+        group.add(frame);
 
-      // Spotlight for each portrait
-      const spot = new THREE.SpotLight(0xfff5e6, 25, 6, Math.PI / 5, 0.4, 1);
-      spot.position.set(0, 1.2, 1.4);
-      spot.target = art;
-      spot.castShadow = true;
-      group.add(spot);
-      group.add(spot.target);
+        // Canvas
+        const artMesh = new THREE.Mesh(
+          new THREE.PlaneGeometry(clampedW, clampedH),
+          new THREE.MeshStandardMaterial({ map: tex, roughness: 0.6 })
+        );
+        artMesh.position.z = 0.031;
+        group.add(artMesh);
 
-      scene.add(group);
-    });
+        // Plaque
+        const plaqueW = clampedW;
+        const plaqueH = plaqueW * (128 / 512);
+        const plaqueTex = makePlaque(art.title, art.year, plaqueW);
+        const plaque = new THREE.Mesh(
+          new THREE.PlaneGeometry(plaqueW, plaqueH),
+          new THREE.MeshStandardMaterial({ map: plaqueTex, roughness: 0.8 })
+        );
+        plaque.position.set(0, -clampedH / 2 - plaqueH / 2 - 0.1, 0.031);
+        group.add(plaque);
 
-    countEl.textContent = portraitPositions.length;
+        // Spotlight
+        const spot = new THREE.SpotLight(0xfff5e6, 25, 6, Math.PI / 5, 0.4, 1);
+        spot.position.set(0, 1.2, 1.4);
+        spot.target = artMesh;
+        spot.castShadow = true;
+        group.add(spot);
+        group.add(spot.target);
+
+        scene.add(group);
+      }
+
+      loading.style.opacity = '0';
+      setTimeout(() => loading.remove(), 500);
+    }
 
     // Ambient lighting
     const ambient = new THREE.AmbientLight(0xffffff, 0.35);
@@ -312,8 +311,11 @@
       renderer.setSize(window.innerWidth, window.innerHeight);
     });
 
-    loading.style.opacity = '0';
-    setTimeout(() => loading.remove(), 500);
+    initArtworks().catch(err => {
+      console.error(err);
+      loading.textContent = '畫作載入失敗，請確認圖片路徑';
+    });
+
     animate();
   </script>
 </body>
