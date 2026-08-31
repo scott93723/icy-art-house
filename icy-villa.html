@@ -57,6 +57,40 @@
       pointer-events: none;
       transition: opacity 0.4s ease;
     }
+    #tour-controls {
+      position: absolute;
+      bottom: 34px;
+      left: 50%;
+      transform: translateX(-50%);
+      pointer-events: auto;
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      background: rgba(0,0,0,0.45);
+      padding: 10px 18px;
+      border-radius: 999px;
+      backdrop-filter: blur(6px);
+    }
+    #tour-controls button {
+      background: rgba(255,255,255,0.12);
+      border: 1px solid rgba(255,255,255,0.25);
+      color: #fff;
+      padding: 8px 18px;
+      border-radius: 999px;
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 0.85rem;
+      letter-spacing: 0.08em;
+      transition: background 0.2s ease;
+    }
+    #tour-controls button:hover { background: rgba(255,255,255,0.22); }
+    #tour-info {
+      color: #ccc;
+      font-size: 0.8rem;
+      letter-spacing: 0.05em;
+      min-width: 120px;
+      text-align: center;
+    }
   </style>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@200;400;700&display=swap" rel="stylesheet">
 </head>
@@ -69,8 +103,15 @@
     </div>
     <div class="meta">
       <div>作品數量<br><strong id="count">0</strong></div>
-      <div>操作方式<br><strong>拖拽環繞 · 滾輪縮放 · 右鍵平移</strong></div>
+      <div>操作方式<br><strong>拖拽環繞 · 滾輪縮放 · 右鍵平移 · 空白鍵自動導覽</strong></div>
     </div>
+  </div>
+
+  <div id="tour-controls">
+    <button id="tour-toggle">▶ 自動導覽</button>
+    <button id="tour-prev">‹ 上一幅</button>
+    <span id="tour-info">手動模式</span>
+    <button id="tour-next">下一幅 ›</button>
   </div>
 
   <script type="importmap">
@@ -90,6 +131,10 @@
     const canvas = document.getElementById('canvas');
     const loading = document.getElementById('loading');
     const countEl = document.getElementById('count');
+    const tourToggle = document.getElementById('tour-toggle');
+    const tourPrev = document.getElementById('tour-prev');
+    const tourNext = document.getElementById('tour-next');
+    const tourInfo = document.getElementById('tour-info');
 
     // Scene
     const scene = new THREE.Scene();
@@ -126,7 +171,6 @@
       color: 0xffffff, metalness: 0, roughness: 0.05, transmission: 0.92, thickness: 0.1, transparent: true
     });
     const frameMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.4 });
-    const plaqueMat = new THREE.MeshStandardMaterial({ color: 0xf5f0e8, roughness: 0.8 });
 
     // Floor
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(16, 16), floorMat);
@@ -180,12 +224,12 @@
 
     // Artworks configuration
     const artworks = [
-      { file: 'robot-cat-pink.jpg', title: '機器貓日常', year: '2014', x: -3, z: -7.8, ry: 0, baseW: 1.3 },
-      { file: 'robot-cat-yellow.jpg', title: '機器貓日常', year: '2014', x: 0, z: -7.8, ry: 0, baseW: 1.3 },
-      { file: 'robot-cat-gray.jpg', title: '機器貓日常', year: '2014', x: 3, z: -7.8, ry: 0, baseW: 1.3 },
+      { file: 'robot-cat-pink.jpg', title: '機器貓日常（粉）', year: '2014', x: -3, z: -7.8, ry: 0, baseW: 1.3 },
+      { file: 'robot-cat-yellow.jpg', title: '機器貓日常（黃）', year: '2014', x: 0, z: -7.8, ry: 0, baseW: 1.3 },
+      { file: 'robot-cat-gray.jpg', title: '機器貓日常（灰）', year: '2014', x: 3, z: -7.8, ry: 0, baseW: 1.3 },
       { file: 'guanyin-w01.jpg', title: '觀音系列 #w01', year: '2020', x: -7.8, z: -3, ry: Math.PI/2, baseW: 1.0 },
       { file: 'buddha-heart-sutra.jpg', title: '心經觀音', year: '2020', x: -7.8, z: 3, ry: Math.PI/2, baseW: 1.2 },
-      { file: 'robot-cat-blue.jpg', title: '機器貓日常', year: '2014', x: 7.8, z: -3, ry: -Math.PI/2, baseW: 1.3 },
+      { file: 'robot-cat-blue.jpg', title: '機器貓日常（藍）', year: '2014', x: 7.8, z: -3, ry: -Math.PI/2, baseW: 1.3 },
       { file: 'surreal-flower.jpg', title: '向日葵', year: '2014', x: 7.8, z: 3, ry: -Math.PI/2, baseW: 1.2 },
       { file: 'icy-portrait.jpg', title: 'ICY', year: 'Portrait', x: -5.5, z: 7.8, ry: Math.PI, baseW: 1.2 },
       { file: 'icy-studio.jpg', title: 'ICY Studio', year: 'Studio', x: 5.5, z: 7.8, ry: Math.PI, baseW: 1.2 },
@@ -220,6 +264,72 @@
       tex.colorSpace = THREE.SRGBColorSpace;
       return tex;
     }
+
+    // Tour state
+    let tourActive = false;
+    let tourIndex = 0;
+    let tourProgress = 0;
+    let lastTourTime = 0;
+    const dwellTime = 3500; // ms per artwork
+    const travelTime = 2000; // ms between artworks
+    const tourCam = new THREE.Vector3();
+    const tourTarget = new THREE.Vector3();
+    const currentCam = new THREE.Vector3();
+    const currentTarget = new THREE.Vector3();
+
+    function getViewForArt(art, distance = 2.2) {
+      const perp = new THREE.Vector3(Math.sin(art.ry), 0, Math.cos(art.ry));
+      const eye = new THREE.Vector3(art.x, 1.7, art.z).add(perp.multiplyScalar(distance));
+      const target = new THREE.Vector3(art.x, 1.7, art.z);
+      return { eye, target };
+    }
+
+    function updateTourInfo() {
+      const art = artworks[tourIndex];
+      tourInfo.textContent = `${tourIndex + 1} / ${artworks.length} · ${art.title}`;
+    }
+
+    function startTour() {
+      tourActive = true;
+      tourToggle.textContent = '⏸ 暫停導覽';
+      currentCam.copy(camera.position);
+      currentTarget.copy(controls.target);
+      tourProgress = 0;
+      lastTourTime = performance.now();
+      updateTourInfo();
+    }
+
+    function pauseTour() {
+      tourActive = false;
+      tourToggle.textContent = '▶ 自動導覽';
+      tourInfo.textContent = '手動模式';
+    }
+
+    function goToArt(index) {
+      tourIndex = ((index % artworks.length) + artworks.length) % artworks.length;
+      if (!tourActive) {
+        currentCam.copy(camera.position);
+        currentTarget.copy(controls.target);
+      }
+      tourProgress = 0;
+      lastTourTime = performance.now();
+      updateTourInfo();
+    }
+
+    tourToggle.addEventListener('click', () => tourActive ? pauseTour() : startTour());
+    tourPrev.addEventListener('click', () => { goToArt(tourIndex - 1); if (!tourActive) startTour(); });
+    tourNext.addEventListener('click', () => { goToArt(tourIndex + 1); if (!tourActive) startTour(); });
+
+    window.addEventListener('keydown', (e) => {
+      if (e.code === 'Space') {
+        e.preventDefault();
+        tourActive ? pauseTour() : startTour();
+      }
+    });
+
+    canvas.addEventListener('pointerdown', () => {
+      if (tourActive) pauseTour();
+    });
 
     // Load and place all artworks
     async function initArtworks() {
@@ -297,9 +407,37 @@
     rectLight.rotation.x = -Math.PI / 2;
     scene.add(rectLight);
 
+    // Easing
+    function easeInOutCubic(t) {
+      return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+    }
+
     // Animation loop
-    function animate() {
+    function animate(time) {
       requestAnimationFrame(animate);
+
+      if (tourActive) {
+        const elapsed = time - lastTourTime;
+        const totalSegment = travelTime + dwellTime;
+        const rawT = Math.min(elapsed / totalSegment, 1);
+        const t = easeInOutCubic(rawT);
+
+        const from = getViewForArt(artworks[tourIndex]);
+        const toIndex = (tourIndex + 1) % artworks.length;
+        const to = getViewForArt(artworks[toIndex]);
+
+        if (rawT < 1) {
+          tourCam.lerpVectors(from.eye, to.eye, t);
+          tourTarget.lerpVectors(from.target, to.target, t);
+          camera.position.copy(tourCam);
+          controls.target.copy(tourTarget);
+        } else {
+          tourIndex = toIndex;
+          lastTourTime = time;
+          updateTourInfo();
+        }
+      }
+
       controls.update();
       renderer.render(scene, camera);
     }
@@ -316,7 +454,7 @@
       loading.textContent = '畫作載入失敗，請確認圖片路徑';
     });
 
-    animate();
+    animate(performance.now());
   </script>
 </body>
 </html>
