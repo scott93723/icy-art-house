@@ -6,7 +6,9 @@ A real-time 3D artist villa for **ICY**, filled with her own artworks and portra
 
 ## Preview
 
-Open `icy-villa.html` in any modern browser to explore the villa:
+🌐 **Live site**: https://scott93723.github.io/icy-art-house/
+
+Open `index.html` in any modern browser to explore the villa locally:
 
 ```bash
 # Suggested: serve via a local static server so image textures load correctly
